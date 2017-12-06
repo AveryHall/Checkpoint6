@@ -1,0 +1,85 @@
+#===============================================================
+# File--------zeller.slic
+# Programmer--Bryan Crawley
+# Project-----Slic demo
+#
+# This program uses Zeller's Congruence to compute the day of
+# the week upon which any given calendar date falls. The user
+# specifies the month, day, and year as integers. The program
+# responds with the name of the corresponding weekday.
+#
+# Note: Zeller's Conguence only works for the Gregorian
+# calendar.
+#===============================================================
+
+main;
+
+   data:
+
+      integer: year, month, day, m;
+      integer: m, y, c;
+      integer: temp, weekday;
+
+   algorithm:
+
+      print !;
+      print "Month----";
+      read month;
+      print "Day------";
+      read day; 
+      print "Year-----";
+      read year;
+
+      if (month <= 2);
+         year := year - 1;
+         m := month + 12;
+      else;
+         m := month;
+      end if;
+
+      c := year/100;
+      y := year - (c*100);
+
+      temp := day + (m+1)*26/10 + y + y/4 + c/4 - 2*c + 7;
+      weekday := temp - temp/7*7;
+
+      # This "if" is necessary to make sure weekday is positive,
+      # because we did a remainder instead of a true modulus.
+      if (weekday < 0);
+         weekday := weekday + 7;
+      end if;
+
+      print "Weekday--";
+
+      if (weekday = 1);
+         print "Sunday";
+      end if; 
+
+      if (weekday = 2);
+         print "Monday";
+      end if; 
+
+      if (weekday = 3);
+         print "Tuesday";
+      end if; 
+
+      if (weekday = 4);
+         print "Wednesday";
+      end if; 
+
+      if (weekday = 5);
+         print "Thursday";
+      end if; 
+
+      if (weekday = 6);
+         print "Friday";
+      end if; 
+
+      if (weekday = 0);
+         print "Saturday";
+      end if; 
+
+      print !,!;
+      exit;
+
+end main;
