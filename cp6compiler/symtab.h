@@ -10,7 +10,7 @@
  * ========================================================================
  */
 
- #include <string.h>
+ //#include <string.h>
 
 //Symbol data types
 #define ST_INT 		  0

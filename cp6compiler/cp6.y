@@ -16,18 +16,30 @@
  */
 
 #include "symtab.h"
+#include "ast.h"
 #include "y.tab.h"
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+// Define struct for symtab
 struct symboltable symtab;
 
+// Additional structs for building the symbol table
 struct symbolList {
 	struct symbolList *symlink;
 	struct symbol *thisSym;
 };
 
 struct symbolList *symList;
+
+// Define struct for Abstract Syntax Tree (AST)
+struct statementList *ast;
+
+
+//
+// Symbol Table Functions
+//
 
 /*
  * =======================================================================
@@ -69,6 +81,8 @@ struct symbolList *symList;
 		symtab.nextAddress += s;
 		symtab.size += 1;
 
+		//return (symtab.size-1);
+
 		//} else { You really want to do this in parser
 		//		//Throw an error
 		//}
@@ -94,6 +108,37 @@ struct symbolList *symList;
 		 return -1;
    }
 
+	 /*
+ * ========================================================================
+ * eval(p) -- Evaluate an integer expression.  p is a pointer to the
+ *            expression.  Return the resulting int value.
+ * ========================================================================
+ */
+
+int eval(struct expression *p)
+{
+   int value;
+
+   if (p->kind == EK_INT) {
+      value = p->ivalue;
+   }
+   else {
+      switch (p->operator) {
+         case OP_ADD:  value = eval(p->l_operand) + eval(p->r_operand);
+                       break;
+         case OP_SUB:  value = eval(p->l_operand) - eval(p->r_operand);
+                       break;
+         case OP_MUL:  value = eval(p->l_operand) * eval(p->r_operand);
+                       break;
+         case OP_DIV:  value = eval(p->l_operand) / eval(p->r_operand);
+                       break;
+         case OP_UMIN: value = - eval(p->r_operand);
+                       break;
+      }
+   }
+   return (value);
+ }
+
 %}
 
 %union{
@@ -101,10 +146,16 @@ struct symbolList *symList;
    int    ival;
    float  rval;
 
-
    char		       				symkind;
    struct symbol       	*sym;
    struct symbolList   	*symListPoint;
+
+	 struct statementList *stmtList;
+	 struct statement 		*stmt;
+	 struct expression    *exprpoint;
+	 int                   indexval;
+	 struct printlist     *pl;
+	 struct printitem     *pi;
 }
 
 %token        RWMAIN
@@ -154,12 +205,29 @@ struct symbolList *symList;
 %token        NEWLINE
 %token        IGNORE
 
-%type  <symList>  			decstmt
+
 %type  <symListPoint>  	decitemlist
 %type  <symkind>  			typename
 %type  <sym>      			decitem
 
-
+%type  <stmtList>				statementlist
+%type  <stmt>           statement
+%type  <indexval>       varref
+%type  <exprpoint>      whilestmt
+%type  <stmt>           countupstmt
+%type  <stmt>           countdownstmt
+%type  <exprpoint>      ifstmt
+%type  <indexval>       readstmt
+%type  <pl>             printstmt
+%type  <pl>             printlist
+%type  <pi>             printitem
+%type  <exprpoint>      expr
+%type  <exprpoint>      bool
+%type  <exprpoint>      exp
+%type  <exprpoint>      term
+%type  <exprpoint>      factor
+%type  <exprpoint>      unit
+%type  <exprpoint>      number
 
 
 %%
@@ -248,45 +316,164 @@ decitem       : VARNAME
 			}
               ;
 
+
+
+
+
 algrsect      : RWALGORITHM COLON statementlist
+							{
+								$3 = ast;
+							}
+							| RWALGORITHM COLON
               ;
 
 statementlist : statement statementlist
+							{
+								$$ = malloc(sizeof(struct statementList));
+								$$->nextStatement = $2;
+								$$->thisStatement = $1;
+							}
               | statement
-              |
+							{
+								$$ = malloc(sizeof(struct statementList));
+								$$->nextStatement = NULL;
+								$$->thisStatement = $1;
+							}
+							|
+							{
+
+							}
               ;
 
 statement     : RWEXIT SEMICOLON
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_EXIT;
+							}
               | varref ASSIGNOP expr SEMICOLON
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_ASSIGN;
+								$$->index = $1;
+								$$->expr1 = $3;
+							}
               | whilestmt statementlist endwhilestmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_WHILE;
+								$$->expr1 = $1;
+								$$->body1 = $2;
+							}
               | countupstmt statementlist endcountstmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_COUNTUP;
+								$$->expr1 = $1->expr1;
+								$$->expr2 = $1->expr2;
+								$$->body1 = $2;
+							}
               | countdownstmt statementlist endcountstmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_COUNTDOWN;
+								$$->expr1 = $1->expr1;
+								$$->expr2 = $1->expr2;
+								$$->body1 = $2;
+							}
               | ifstmt statementlist endifstmt
-              | elsestmt statementlist
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_IF;
+								$$->expr1 = $1;
+								$$->body1 = $2;
+							}
+              | ifstmt statementlist elsestmt statementlist endifstmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_IF_ELSE;
+								$$->expr1 = $1;
+								$$->body1 = $2;
+								$$->body2 = $4;
+							}
               | readstmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_READ;
+								$$->index = $1;
+							}
               | printstmt
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->stmtkind = SK_PRINT;
+								$$->plist = $1;
+							}
               ;
 
 varref        : VARNAME
+							{
+								int index = findSymbol($1);
+
+								if(index == -1) {
+									yyerror("Referenced variable was not declared");
+									YYERROR;
+								} else { // The variable was found
+									$$ = index;
+								}
+							}
               | VARNAME LSQBRAC expr RSQBRAC
+							{
+								int index = findSymbol($1);
+
+								if(index == -1) {
+									yyerror("Referenced variable was not declared");
+									YYERROR;
+								} else { // The variable was find
+
+									int relativeIndex = eval($3);
+									//FIXME define expreval function for evaluating expressions
+
+									if (relativeIndex < 0 || relativeIndex >= symtab.st[index].size) {
+										yyerror("Array index out of bounds");
+										YYERROR;
+									} else {
+										$$ = index + relativeIndex;
+									}
+								}
+							}
               ;
 
 whilestmt     : RWWHILE expr SEMICOLON
+							{
+								$$ = $2;
+							}
               ;
 
 endwhilestmt  : RWEND RWWHILE SEMICOLON
               ;
 
 countupstmt   : RWCOUNTING VARNAME RWUPWARD expr RWTO expr SEMICOLON
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->expr1 = $4;
+								$$->expr2 = $6;
+							}
               ;
 
 countdownstmt : RWCOUNTING VARNAME RWDOWNWARD expr RWTO expr SEMICOLON
+							{
+								$$ = malloc(sizeof(struct statement));
+								$$->expr1 = $4;
+								$$->expr2 = $6;
+							}
               ;
 
 endcountstmt  : RWEND RWCOUNTING SEMICOLON
               ;
 
 ifstmt        : RWIF expr SEMICOLON
+							{
+								$$ = $2;
+							}
               ;
 
 elsestmt      : RWELSE SEMICOLON
@@ -296,57 +483,226 @@ endifstmt     : RWEND RWIF SEMICOLON
               ;
 
 readstmt      : RWREAD varref SEMICOLON
+							{
+								$$ = $2;
+							}
               ;
 
 printstmt     : RWPRINT printlist SEMICOLON
+							{
+								$$ = $2;
+							}
               ;
 
 printlist     : printitem COMMA printlist
+							{
+								$$ = malloc(sizeof(struct printlist));
+								$$->nextItem = $3;
+								$$->thisItem = $1;
+							}
               | printitem
+							{
+								$$ = malloc(sizeof(struct printlist));
+								$$->nextItem = NULL;
+								$$->thisItem = $1;
+							}
               ;
 
 printitem     : expr
+							{
+								$$ = malloc(sizeof(struct printitem));
+								$$->pkind = PK_EXP;
+								$$->expr1 = $1;
+							}
               | STRCONST
+							{
+								$$ = malloc(sizeof(struct printitem));
+								$$->pkind = PK_STR;
+								$$->outstr = $1;
+							}
               | CARRIAGERETURN
+							{
+								$$ = malloc(sizeof(struct printitem));
+								$$->pkind = PK_CRLF;
+							}
               ;
 
 expr          : expr ANDOP bool
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_AND;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | expr OROP bool
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_OR;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | NOTOP bool
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_NOT;
+								$$->r_operand = $2;
+							}
               | bool
+							{
+								$$ = $1;
+							}
               ;
 
 bool          : bool LTOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_LT;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | bool LEQOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_LEQ;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | bool GTOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_GT;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | bool GEQOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_GEQ;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | bool EQOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_EQ;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | bool NEQOP exp
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_NEQ;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | exp
+							{
+								$$ = $1;
+							}
               ;
 
 exp           : exp ADDOP term
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_ADD;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | exp SUBOP term
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_SUB;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | term
+							{
+								$$ = $1;
+							}
               ;
 
 term          : term MULTOP factor
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_MUL;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | term DIVOP factor
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_DIV;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | term MODOP factor
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_MOD;
+								$$->l_operand = $1;
+								$$->r_operand = $3;
+							}
               | factor
+							{
+								$$ = $1;
+							}
               ;
 
 factor        : SUBOP unit
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_OP;
+								$$->operator = OP_UMIN;
+								$$->r_operand = $2;
+							}
               | unit
+							{
+								$$ = $1;
+							}
               ;
 
 unit          : LPAREN expr RPAREN
+							{
+								$$ = $2;
+							}
               | number
+							{
+								$$ = $1;
+							}
               ;
 
 number        : INTCONST
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_INT;
+								$$->ivalue = $1;
+							}
               | FLTCONST
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_REAL;
+								$$->rvalue = $1;
+							}
               | varref
+							{
+								$$ = malloc(sizeof(struct expression));
+								$$->kind = EK_VAR;
+								$$->index = $1;
+							}
               ;
 
 
